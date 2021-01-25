@@ -1,0 +1,1 @@
+# spinnaker-ec2-spot-starter
