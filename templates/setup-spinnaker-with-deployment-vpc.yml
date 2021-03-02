@@ -29,6 +29,7 @@ Metadata:
           - PrivateSubnet2ACIDR
           - PrivateSubnet3ACIDR
           - PrivateSubnet4ACIDR
+          - CreateSecurityGroupsForElbAndInstances
 
     ParameterLabels:
       AvailabilityZones:
@@ -53,6 +54,8 @@ Metadata:
         default: Public subnet 3 CIDR
       PublicSubnet4CIDR:
         default: Public subnet 4 CIDR
+      CreateSecurityGroupsForElbAndInstances:
+        default: Create Security Groups for ELB and EC2 Instances
       VPCCIDR:
         default: VPC CIDR
       EC2KeyPairName:
@@ -142,6 +145,13 @@ Parameters:
     Default: 10.100.96.0/19
     Description: CIDR block for private subnet 4A located in Availability Zone 4
     Type: String
+  CreateSecurityGroupsForElbAndInstances:
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'true'
+    Description: Set to true to create Security Groups for ELB and EC2 Instances for a sample application
+    Type: String
   EC2KeyPairName:
     Description: "The name of an existing EC2 KeyPair to enable SSH access."
     Type: "AWS::EC2::KeyPair::KeyName"
@@ -158,6 +168,9 @@ Parameters:
     AllowedPattern: ^\d{1,}\.\d{1,}\.\d{1,}$
     ConstraintDescription: must be valid Spinnaker version (e.g, 1.24.3)
     Default: 1.24.3
+
+Conditions:
+  CreateSGForElbAndInstancesCondition: !Equals [ !Ref 'CreateSecurityGroupsForElbAndInstances', 'true' ]
 
 Mappings:
   # ubuntu/images/hvm-ssd/ubuntu-xenial-16.04-amd64-server-20190320
@@ -227,11 +240,11 @@ Resources:
       TemplateURL: https://aws-quickstart.s3.amazonaws.com/quickstart-aws-vpc/templates/aws-vpc.template
   
   ### Spinnaker Instance Resources ###
-  SpinnakerInstanceSecurityGroup: # A Security Group that allows ingress access for SSH and the default port that the Sample Webapp test application will run on
+  SpinnakerInstanceSecurityGroup: 
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: Sample Webapp EC2 Security Group
-      GroupDescription: A Security Group that allows ingress access for SSH and the default port that a Jenkins Master will run on
+      GroupName: Spinnaker Instance Security Group
+      GroupDescription: A Security Group that allows ingress access for SSH to Spinnaker Instance
       SecurityGroupIngress:
       - IpProtocol: tcp
         FromPort: 22
@@ -349,6 +362,42 @@ Resources:
             Resource: 
               - !GetAtt SpinnakerManagedRole.Arn # This is the current account
       PolicyName: SpinnakerAssumeRolePolicy
+  
+  SecurityGroupDemoWebAppALB: # A Security Group that allows ingress access for HTTP on ALBs and used to access the DemoWebApp environment
+    Condition: CreateSGForElbAndInstancesCondition
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: DeploymentVPCStack
+    Properties:
+      GroupName: DemoWebApp ALB Security Group
+      GroupDescription: A Security Group that allows ingress access for HTTP on ALBs and used to access the DemoWebApp test environment
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      VpcId: !GetAtt DeploymentVPCStack.Outputs.VPCID
+
+  SecurityGroupDemoWebAppEC2: # A Security Group that allows ingress access for SSH and the default port that the DemoWebApp application will run on
+    Condition: CreateSGForElbAndInstancesCondition
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: SecurityGroupDemoWebAppALB
+    Properties:
+      GroupName: DemoWebApp EC2 Security Group
+      GroupDescription: A Security Group that allows ingress access for SSH and the default port that a Jenkins Master will run on
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !Ref CurrentIP
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: !Ref CurrentIP
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        SourceSecurityGroupId: !Ref SecurityGroupDemoWebAppALB
+      VpcId: !GetAtt DeploymentVPCStack.Outputs.VPCID
 
   SpinnakerInstance:
     Type: AWS::EC2::Instance
@@ -389,7 +438,7 @@ Resources:
               echo "export ACCOUNT_ID=${!ACCOUNT_ID}" >> /home/ubuntu/.bash_profile
               echo "export AWS_REGION=${!AWS_REGION}" >> /home/ubuntu/.bash_profile
               # Configure and enable the AWS account to deploy on EC2
-              sudo -H -u ubuntu hal config provider aws account add dev --account-id ${!ACCOUNT_ID} --assume-role role/spinnakerManaged1 --regions ${!AWS_REGION}
+              sudo -H -u ubuntu hal config provider aws account add my-aws-account --account-id ${!ACCOUNT_ID} --assume-role role/spinnakerManaged1 --regions ${!AWS_REGION}
               sudo -H -u ubuntu hal config provider aws enable
               # Choose Persistent Storage to S3 Using Halyard
               sudo -H -u ubuntu hal config storage s3 edit --region ${!AWS_REGION}
@@ -398,8 +447,25 @@ Resources:
               sudo -H -u ubuntu hal config version edit --version ${SpinnakerVersion}
               # Deploy Spinnaker locally
               sudo hal deploy apply
+              # Enable Launch Templates for all applications on clouddriver
+              sudo -H -u ubuntu cat << EOF > /home/ubuntu/.hal/default/profiles/clouddriver-local.yml
+              aws:
+                features:
+                  launch-templates:
+                    enabled: true
+                    all-applications:
+                      enabled: true
+              EOF
+              # Enable Launch Templates on the UI
+              sudo -H -u ubuntu cp /opt/deck/html/settings.js /home/ubuntu/.hal/default/profiles/
+              sudo -H -u ubuntu sed -i -e "s/var aws = {/var aws = { serverGroups: { enableLaunchTemplates: true, enableIMDSv2: true, enableCpuCredits: true, },/g" /home/ubuntu/.hal/default/profiles/settings.js
+              # Apply the Changes
+              sudo hal deploy apply
+
 
 Outputs:
   SpinnakerInstance:
     Value: !Sub ${SpinnakerInstance.PublicDnsName}
     Description: 'Spinnaker instance public name (connect via SSH using ssh -A -L 9000:localhost:9000 -L 8084:localhost:8084 -L 8087:localhost:8087 -i <keypair> ubuntu@<SpinnakerInstanceDNS>)'
+  VPCID:
+    Value: !GetAtt DeploymentVPCStack.Outputs.VPCID
