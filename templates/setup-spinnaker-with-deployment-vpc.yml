@@ -323,30 +323,30 @@ Resources:
               Resource: "*" # You should restrict this only to certain set of roles, if required
         PolicyName: SpinnakerPassRole
 
-  ### Spinnaker Managing Setup ###
-  # BaseIAMRole:
-  #   Type: AWS::IAM::Role
-  #   Properties:
-  #     RoleName: BaseIAMRole
-  #     AssumeRolePolicyDocument:
-  #       Statement:
-  #         - Action:
-  #             - sts:AssumeRole
-  #           Effect: Allow
-  #           Principal:
-  #             Service:
-  #               - ec2.amazonaws.com
-  #       Version: "2012-10-17"
-  #     Path: /
+  ## Spinnaker Managing Setup ###
+  BaseIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: BaseIAMRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+        Version: "2012-10-17"
+      Path: /
   
-  # # Creates Instance Profile to be used by any APP created by Spinnaker. Spinnaker has passRole access only to this instance Profile
-  # BaseInstanceProfile:
-  #   Type: AWS::IAM::InstanceProfile
-  #   Properties:
-  #     InstanceProfileName: BaseInstanceProfile
-  #     Path: /
-  #     Roles:
-  #       - !Ref BaseIAMRole
+  # Creates Instance Profile to be used by any APP created by Spinnaker. Spinnaker has passRole access only to this instance Profile
+  BaseInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: BaseInstanceProfile
+      Path: /
+      Roles:
+        - !Ref BaseIAMRole
 
   SpinnakerAssumeRolePolicy:
     Type: AWS::IAM::Policy
