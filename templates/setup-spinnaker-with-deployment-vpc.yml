@@ -166,8 +166,8 @@ Parameters:
     Description: Your current IP address (used to limit access to SSH services on EC2 instances)
     Type: String
     AllowedPattern: ^\d{1,}\.\d{1,}\.\d{1,}$
-    ConstraintDescription: must be valid Spinnaker version (e.g, 1.24.3)
-    Default: 1.24.3
+    ConstraintDescription: must be valid Spinnaker version (e.g, 1.25.0)
+    Default: 1.25.0
 
 Conditions:
   CreateSGForElbAndInstancesCondition: !Equals [ !Ref 'CreateSecurityGroupsForElbAndInstances', 'true' ]
@@ -237,7 +237,7 @@ Resources:
         PrivateSubnet4ACIDR: !Ref PrivateSubnet4ACIDR
         PublicSubnetTag2: 'immutable_metadata={"purpose":"public-subnet"}' # Spinnaker need these immutable metadata to detech the Subnets 
         PrivateSubnetATag2: 'immutable_metadata={"purpose":"private-subnet"}'
-      TemplateURL: https://aws-quickstart.s3.amazonaws.com/quickstart-aws-vpc/templates/aws-vpc.template
+      TemplateURL: https://aws-quickstart.s3.amazonaws.com/quickstart-aws-vpc/templates/aws-vpc.template.yaml
   
   ### Spinnaker Instance Resources ###
   SpinnakerInstanceSecurityGroup: 
@@ -368,7 +368,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     DependsOn: DeploymentVPCStack
     Properties:
-      GroupName: DemoWebApp ALB Security Group
+      GroupName: Demo-ALB-SecurityGroup
       GroupDescription: A Security Group that allows ingress access for HTTP on ALBs and used to access the DemoWebApp test environment
       SecurityGroupIngress:
       - IpProtocol: tcp
@@ -382,7 +382,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     DependsOn: SecurityGroupDemoWebAppALB
     Properties:
-      GroupName: DemoWebApp EC2 Security Group
+      GroupName: Demo-EC2-SecurityGroup
       GroupDescription: A Security Group that allows ingress access for SSH and the default port that a Jenkins Master will run on
       SecurityGroupIngress:
       - IpProtocol: tcp
